@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Per-client/per-service-account configs contain credential paths — never commit these.
+configs/*.json
+!configs/.gitkeep
+
+# Output artifacts (exports, downloaded files, generated PDFs, etc.) are
+# working files from real usage — never commit these.
+artifacts/*
+!artifacts/.gitkeep
+
+# Local deny-list for the pre-push scan. Holds names that must never appear in
+# this public repo — and would themselves be a leak if committed here.
+.git-deny-patterns

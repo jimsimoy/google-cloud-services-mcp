@@ -1,0 +1,13 @@
+{
+  "_comment": "Copy this file to configs/<name>.json (e.g. configs/default.json) and fill in real values. Files under configs/ are gitignored.",
+  "service_account_key": "/absolute/path/to/service-account-key.json",
+  "scopes": [
+    "https://www.googleapis.com/auth/documents",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+  ],
+  "defaults": {
+    "spreadsheet_range": "A1",
+    "doc_export_format": "text"
+  }
+}

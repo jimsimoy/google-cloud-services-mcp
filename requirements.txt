@@ -1,0 +1,4 @@
+mcp>=1.27.1,<2
+google-api-python-client
+google-auth
+python-docx
