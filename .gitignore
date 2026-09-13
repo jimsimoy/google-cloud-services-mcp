@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+.pytest_cache/
 
 # Per-client/per-service-account configs contain credential paths — never commit these.
 configs/*.json

@@ -204,18 +204,40 @@ google_cloud_services.py   # Docs/Sheets/Drive client library (pure functions, n
 config.example.json        # config template — copy into configs/
 configs/                   # per-client/service-account configs (gitignored)
 artifacts/                 # scratch space for downloaded/exported files (gitignored)
+tests/                     # offline pytest suite — no credentials or network needed
 ```
 
 The server communicates over stdio using JSON-RPC 2.0, the standard MCP transport.
 
 ---
 
+## Development
+
+```bash
+python3 -m venv .venv
+./.venv/bin/pip install -r requirements.txt pytest
+./.venv/bin/python -m pytest -q
+```
+
+51 tests, all offline — every Google Docs/Sheets/Drive API call is faked via a mocked `build()`
+(`unittest.mock.MagicMock`), so nothing here touches the network or needs a real service account.
+Coverage: `extract_id_from_url`'s URL patterns, the markdown-to-Docs conversion
+(`_parse_markdown_segments`, `_parse_simple_markdown`) including multi-table and malformed-table
+edge cases, the table-insertion cell-fill-order logic (`_insert_table_at` fills highest-index cells
+first so earlier inserts never shift positions not yet written), `doc_read`'s Docs-API-then-Drive-
+fallback behavior, every Sheets operation, and `drive_read`'s three branches (native Docs/Sheets
+export, a real in-memory `.docx` parsed through `python-docx`, and the generic raw-download
+fallback). `load_config`/`get_credentials` are covered too (missing-file and credential-wiring paths).
+
+---
+
 ## A note on testing
 
-This was built directly against the official Google Docs v1, Sheets v4, and Drive v3 REST APIs via
-`google-api-python-client`. The markdown-to-Docs writer (headings, bullet lists, and native bordered
-tables with an auto-bolded header row) and the URL-or-bare-ID handling have both been exercised
-against real Google accounts in production use, prior to this repo's creation.
+Beyond the automated suite above: this was built directly against the official Google Docs v1,
+Sheets v4, and Drive v3 REST APIs via `google-api-python-client`. The markdown-to-Docs writer
+(headings, bullet lists, and native bordered tables with an auto-bolded header row) and the
+URL-or-bare-ID handling have both been exercised against real Google accounts in production use,
+prior to this repo's creation.
 
 The MCP layer itself was verified end-to-end using the official `mcp` Python client SDK against a
 real server subprocess: the `initialize` handshake, `tools/list` (all 9 tools returned with correct
