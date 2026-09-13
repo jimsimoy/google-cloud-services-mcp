@@ -153,6 +153,15 @@ def _parse_markdown_segments(md_text):
             table_lines = [line]
             j = i + 2
             while j < len(lines) and lines[j].strip().startswith("|"):
+                # A row immediately followed by its own separator marks the
+                # start of a NEW table (two tables with no blank line between
+                # them) — stop here so the outer loop picks it up fresh,
+                # rather than swallowing it (and its separator) as more data
+                # rows of this table.
+                if j + 1 < len(lines) and re.match(
+                    r"^\s*\|[\s:|-]+\|\s*$", lines[j + 1]
+                ):
+                    break
                 table_lines.append(lines[j])
                 j += 1
             rows = [

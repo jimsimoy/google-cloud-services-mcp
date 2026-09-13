@@ -30,7 +30,7 @@ GUARD_GENERIC=(
 )
 
 # Lines that legitimately contain a trigger word. Keep this list short and specific.
-GUARD_ALLOW='example\.(com|local|org)|your-site|mysite\.local|user@example|placeholder|<[A-Z_]+>|make\.wordpress\.org|@param|@return'
+GUARD_ALLOW='example\.(com|local|org)|your-site|mysite\.local|user@example|placeholder|<[A-Z_]+>|make\.wordpress\.org|@param|@return|noreply@anthropic\.com|@pytest\.|@mcp\.|@server\.'
 
 guard_scan() {
   local subject="$1" content="$2" found=0 pat line
