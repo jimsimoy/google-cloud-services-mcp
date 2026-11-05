@@ -13,13 +13,14 @@ set up a new client/service account.
 
 import io
 import json
+import mimetypes
 import os
 import sys
 import re
 
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaInMemoryUpload, MediaIoBaseDownload
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG_PATH = os.path.join(SCRIPT_DIR, "configs", "default.json")
@@ -506,3 +507,115 @@ def drive_read(creds, file_id):
         _, done = downloader.next_chunk()
     buf.seek(0)
     return buf.read().decode("utf-8", errors="replace")
+
+
+# ── Google Drive: write tools ──────────────────────────────────────────────────
+
+FOLDER_MIME = "application/vnd.google-apps.folder"
+_FILE_FIELDS = "id, name, mimeType, webViewLink"
+
+
+def _escape_query_value(value):
+    """Escape a value for use inside single quotes in a Drive `q` expression."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def drive_upload(creds, folder_id, file_name=None, local_path=None, content=None,
+                 mime_type=None, replace=False):
+    """Upload a local file OR inline text into a Drive folder.
+
+    Exactly one of `local_path` / `content` must be given. `file_name` defaults to
+    the basename of `local_path` and is required with `content`. With `replace=True`,
+    an existing non-trashed file of the same name in the folder is updated in place
+    instead of creating a duplicate. Returns id, name, mimeType and webViewLink.
+    """
+    if (local_path is None) == (content is None):
+        raise ValueError("Give exactly one of local_path or content")
+    if local_path is not None:
+        if not os.path.isfile(local_path):
+            raise ValueError(f"Not a file: {local_path}")
+        with open(local_path, "rb") as f:
+            data = f.read()
+        file_name = file_name or os.path.basename(local_path)
+    else:
+        if not file_name:
+            raise ValueError("file_name is required when uploading inline content")
+        data = content.encode("utf-8")
+
+    mime_type = mime_type or mimetypes.guess_type(file_name)[0] or "application/octet-stream"
+    media = MediaInMemoryUpload(data, mimetype=mime_type, resumable=False)
+    service = build("drive", "v3", credentials=creds)
+
+    if replace:
+        q = (
+            f"'{folder_id}' in parents and name='{_escape_query_value(file_name)}' "
+            f"and trashed=false and mimeType!='{FOLDER_MIME}'"
+        )
+        existing = (
+            service.files()
+            .list(q=q, fields="files(id)", pageSize=1,
+                  supportsAllDrives=True, includeItemsFromAllDrives=True)
+            .execute()
+            .get("files", [])
+        )
+        if existing:
+            return (
+                service.files()
+                .update(fileId=existing[0]["id"], media_body=media,
+                        fields=_FILE_FIELDS, supportsAllDrives=True)
+                .execute()
+            )
+
+    return (
+        service.files()
+        .create(body={"name": file_name, "parents": [folder_id]}, media_body=media,
+                fields=_FILE_FIELDS, supportsAllDrives=True)
+        .execute()
+    )
+
+
+def drive_mkdir(creds, name, parent_id):
+    """Create a folder inside `parent_id`. Returns id, name, mimeType and webViewLink."""
+    service = build("drive", "v3", credentials=creds)
+    return (
+        service.files()
+        .create(body={"name": name, "mimeType": FOLDER_MIME, "parents": [parent_id]},
+                fields=_FILE_FIELDS, supportsAllDrives=True)
+        .execute()
+    )
+
+
+def drive_share(creds, file_id, public):
+    """Turn 'anyone with the link can view' on (public=True) or off (public=False).
+
+    Turning it off removes every 'anyone' permission on the file/folder and leaves
+    named users/groups untouched. Returns the file's id, webViewLink and the list
+    of 'anyone' permission ids that were added or removed.
+    """
+    service = build("drive", "v3", credentials=creds)
+    if public:
+        perm = (
+            service.permissions()
+            .create(fileId=file_id, body={"type": "anyone", "role": "reader"},
+                    fields="id", supportsAllDrives=True)
+            .execute()
+        )
+        changed = [perm["id"]]
+    else:
+        perms = (
+            service.permissions()
+            .list(fileId=file_id, fields="permissions(id, type)", supportsAllDrives=True)
+            .execute()
+            .get("permissions", [])
+        )
+        changed = [p["id"] for p in perms if p.get("type") == "anyone"]
+        for pid in changed:
+            service.permissions().delete(
+                fileId=file_id, permissionId=pid, supportsAllDrives=True
+            ).execute()
+
+    meta = service.files().get(
+        fileId=file_id, fields="id, webViewLink", supportsAllDrives=True
+    ).execute()
+    return {"id": meta["id"], "webViewLink": meta.get("webViewLink"),
+            "public": public, "permission_ids": changed}

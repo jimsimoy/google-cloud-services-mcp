@@ -5,10 +5,10 @@
 <img src="https://img.shields.io/badge/python-3.9%2B-blue.svg?style=flat-square" alt="Python 3.9+">
 <a href="https://github.com/jimsimoy/google-cloud-services-mcp/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License: MIT"></a>
 <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-compatible-green.svg?style=flat-square" alt="MCP Compatible"></a>
-<img src="https://img.shields.io/badge/tools-9-brightgreen.svg?style=flat-square" alt="9 Tools">
+<img src="https://img.shields.io/badge/tools-12-brightgreen.svg?style=flat-square" alt="12 Tools">
 <img src="https://img.shields.io/badge/google-docs%20%7C%20sheets%20%7C%20drive-4285F4.svg?style=flat-square" alt="Google Docs, Sheets, Drive">
 
-**9 tools for the Google Docs, Sheets, and Drive APIs — read, write, and manage files with a service account, no OAuth consent screen required — for Claude Desktop, Claude Code, and any MCP client.**
+**12 tools for the Google Docs, Sheets, and Drive APIs — read, write, and manage files with a service account, no OAuth consent screen required — for Claude Desktop, Claude Code, and any MCP client.**
 
 by [Jan Ivan Simoy](https://github.com/jimsimoy)
 
@@ -42,7 +42,7 @@ without editing code.
 |---|---|---|
 | **Docs** | 3 | Read any Doc as plain text; replace or append its body from markdown — real headings, bullet lists, and native bordered tables, not just raw text |
 | **Sheets** | 4 | Read a range, overwrite it, append rows, or clear it |
-| **Drive** | 2 | List files in a folder; read/export any file (Docs/Sheets as text, `.docx` parsed, anything else downloaded raw) |
+| **Drive** | 5 | List files in a folder; read/export any file (Docs/Sheets as text, `.docx` parsed, anything else downloaded raw); upload a file or text, create folders, and turn link sharing on or off |
 
 <details>
 <summary>Full tool reference</summary>
@@ -58,6 +58,9 @@ without editing code.
 | `sheet_clear` | Clear all values in a range |
 | `drive_list` | List files in a folder (or Drive root/shared drive if none given) |
 | `drive_read` | Read/export any file — native Docs/Sheets as text, `.docx` parsed via `python-docx`, anything else downloaded raw |
+| `drive_upload` | Upload a local file path **or** inline text into a folder (shared drives supported). Creates a new file by default; `replace=true` updates a same-named file in that folder instead. Does not change sharing |
+| `drive_mkdir` | Create a folder inside a parent folder |
+| `drive_share` | `public=true` turns on "anyone with the link can view"; `public=false` removes every link-sharing permission and leaves named users/groups alone. Always an explicit argument, never a side effect of upload |
 
 </details>
 
@@ -87,7 +90,9 @@ manage. Setup:
 2. Create a **service account** (IAM & Admin → Service Accounts) and generate/download its JSON key.
 3. Share each target Doc, Sheet, or Drive folder with the service account's email address (the
    `client_email` field in the key file) — **Viewer** access for reading, **Editor** access for
-   `doc_write`/`doc_append`.
+   `doc_write`/`doc_append` and the Drive write tools (`drive_upload`, `drive_mkdir`,
+   `drive_share`). Service accounts have no storage quota of their own, so upload into a
+   **shared drive** (or a folder inside one), not a plain My Drive folder.
 4. Point `service_account_key` at the downloaded key file in your config (see
    [Configuration](#configuration)).
 
@@ -153,7 +158,7 @@ MCP client entry at `--config configs/acme.json`.
 }
 ```
 
-Restart your MCP client after saving. The 9 tools will appear automatically.
+Restart your MCP client after saving. The 12 tools will appear automatically.
 
 ---
 
@@ -181,6 +186,19 @@ Append a row to Sheet1!A1 in spreadsheet 1XyZ...: 2026-09-13, done
 
 ```
 List the files in Drive folder FOLDER_ID, then read the first PDF you find
+```
+
+### Upload a file and share it by link
+
+```
+Upload /path/to/notes.txt into Drive folder FOLDER_ID, then turn on link sharing for it
+and give me the link
+```
+
+### Make a subfolder
+
+```
+Create a folder named "exports" inside Drive folder FOLDER_ID
 ```
 
 ---
@@ -242,7 +260,7 @@ URL-or-bare-ID handling have both been exercised against real Google accounts in
 prior to this repo's creation.
 
 The MCP layer itself was verified end-to-end using the official `mcp` Python client SDK against a
-real server subprocess: the `initialize` handshake, `tools/list` (all 9 tools returned with correct
+real server subprocess: the `initialize` handshake, `tools/list` (the original 9 tools returned with correct
 schemas), a live authenticated tool call (`drive_list` returning real Drive data), a live API error
 surfaced correctly as `isError: true` (`sheet_read` on a nonexistent spreadsheet), SDK-level input
 validation rejecting a call missing a required argument, and an unknown tool name returning a clean

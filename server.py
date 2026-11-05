@@ -202,6 +202,58 @@ async def list_tools() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="drive_upload",
+            description=(
+                "Upload a local file path OR inline text into a Drive folder (shared drives "
+                "supported). Give exactly one of local_path / content. Creates a new file by "
+                "default; replace=true updates a same-named file in that folder instead. Does "
+                "not change sharing. Returns id, name, mimeType and webViewLink."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["folder_id"],
+                "properties": {
+                    "folder_id":  {"type": "string", "description": "Destination Drive folder URL or bare folder ID"},
+                    "local_path": {"type": "string", "description": "Absolute path of a local file to upload"},
+                    "content":    {"type": "string", "description": "Inline text to upload (needs file_name)"},
+                    "file_name":  {"type": "string", "description": "File name in Drive (default: basename of local_path)"},
+                    "mime_type":  {"type": "string", "description": "MIME type (default: guessed from the file name)"},
+                    "replace":    {"type": "boolean", "default": False,
+                                   "description": "Update a same-named file in the folder instead of creating a new one"},
+                },
+            },
+        ),
+        Tool(
+            name="drive_mkdir",
+            description="Create a folder inside a Drive folder (shared drives supported). Returns id, name and webViewLink.",
+            inputSchema={
+                "type": "object",
+                "required": ["name", "parent_id"],
+                "properties": {
+                    "name":      {"type": "string", "description": "New folder name"},
+                    "parent_id": {"type": "string", "description": "Parent Drive folder URL or bare folder ID"},
+                },
+            },
+        ),
+        Tool(
+            name="drive_share",
+            description=(
+                "Turn 'anyone with the link can view' ON (public=true) or OFF (public=false) for a "
+                "Drive file or folder. This makes content readable by anyone holding the link, so "
+                "use public=true only when the owner wants that. public=false removes every "
+                "'anyone' permission and leaves named users/groups alone. Shared drives may block "
+                "external sharing, in which case the call errors."
+            ),
+            inputSchema={
+                "type": "object",
+                "required": ["file_id", "public"],
+                "properties": {
+                    "file_id": {"type": "string", "description": "Drive file or folder URL or bare ID"},
+                    "public":  {"type": "boolean", "description": "true = anyone with the link can view; false = remove link sharing"},
+                },
+            },
+        ),
     ]
 
 
@@ -250,6 +302,27 @@ async def call_tool(name: str, arguments: dict) -> CallToolResult:
         elif name == "drive_read":
             file_id = gcs.extract_id_from_url(arguments["file_id"])
             return ok(gcs.drive_read(creds, file_id))
+
+        elif name == "drive_upload":
+            return ok(gcs.drive_upload(
+                creds,
+                gcs.extract_id_from_url(arguments["folder_id"]),
+                file_name=arguments.get("file_name"),
+                local_path=arguments.get("local_path"),
+                content=arguments.get("content"),
+                mime_type=arguments.get("mime_type"),
+                replace=bool(arguments.get("replace", False)),
+            ))
+
+        elif name == "drive_mkdir":
+            return ok(gcs.drive_mkdir(
+                creds, arguments["name"], gcs.extract_id_from_url(arguments["parent_id"])
+            ))
+
+        elif name == "drive_share":
+            return ok(gcs.drive_share(
+                creds, gcs.extract_id_from_url(arguments["file_id"]), bool(arguments["public"])
+            ))
 
         else:
             return err(f"Unknown tool: {name}")

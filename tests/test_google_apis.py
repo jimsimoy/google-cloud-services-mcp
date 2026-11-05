@@ -459,3 +459,135 @@ def test_drive_read_falls_back_to_raw_text_decode_for_unknown_mime_types(monkeyp
     result = gcs.drive_read(object(), "file1")
 
     assert result == "a,b,c\n1,2,3\n"
+
+
+# =========================================================================== #
+# Drive write tools: drive_upload / drive_mkdir / drive_share
+# =========================================================================== #
+
+_CREATED = {"id": "new1", "name": "n.txt", "mimeType": "text/plain", "webViewLink": "https://example.com/v"}
+
+
+def test_drive_upload_inline_content_creates_file_in_folder(monkeypatch):
+    service = MagicMock()
+    service.files.return_value.create.return_value.execute.return_value = _CREATED
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    result = gcs.drive_upload(object(), "folder1", file_name="n.txt", content="hello")
+
+    assert result == _CREATED
+    kwargs = service.files.return_value.create.call_args.kwargs
+    assert kwargs["body"] == {"name": "n.txt", "parents": ["folder1"]}
+    assert kwargs["supportsAllDrives"] is True
+    assert kwargs["media_body"].mimetype() == "text/plain"
+    assert kwargs["media_body"].getbytes(0, 5) == b"hello"
+    service.files.return_value.list.assert_not_called()
+
+
+def test_drive_upload_local_file_defaults_name_and_guesses_mime(monkeypatch, tmp_path):
+    f = tmp_path / "report.csv"
+    f.write_text("a,b\n1,2\n")
+    service = MagicMock()
+    service.files.return_value.create.return_value.execute.return_value = _CREATED
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    gcs.drive_upload(object(), "folder1", local_path=str(f))
+
+    kwargs = service.files.return_value.create.call_args.kwargs
+    assert kwargs["body"]["name"] == "report.csv"
+    assert kwargs["media_body"].mimetype() == "text/csv"
+
+
+@pytest.mark.parametrize("kwargs", [
+    {},                                              # neither source
+    {"local_path": "/x", "content": "y"},            # both sources
+    {"content": "y"},                                # content without a name
+    {"local_path": "/definitely/not/a/file.txt"},    # missing file
+])
+def test_drive_upload_rejects_bad_arguments_without_calling_drive(monkeypatch, kwargs):
+    service = MagicMock()
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    with pytest.raises(ValueError):
+        gcs.drive_upload(object(), "folder1", **kwargs)
+
+    service.files.assert_not_called()
+
+
+def test_drive_upload_replace_updates_existing_same_name_file(monkeypatch):
+    service = MagicMock()
+    service.files.return_value.list.return_value.execute.return_value = {"files": [{"id": "old1"}]}
+    service.files.return_value.update.return_value.execute.return_value = _CREATED
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    gcs.drive_upload(object(), "folder1", file_name="it's.txt", content="v2", replace=True)
+
+    q = service.files.return_value.list.call_args.kwargs["q"]
+    assert "'folder1' in parents" in q and "name='it\\'s.txt'" in q and "trashed=false" in q
+    upd = service.files.return_value.update.call_args.kwargs
+    assert upd["fileId"] == "old1" and upd["supportsAllDrives"] is True
+    service.files.return_value.create.assert_not_called()
+
+
+def test_drive_upload_replace_creates_when_no_match(monkeypatch):
+    service = MagicMock()
+    service.files.return_value.list.return_value.execute.return_value = {"files": []}
+    service.files.return_value.create.return_value.execute.return_value = _CREATED
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    gcs.drive_upload(object(), "folder1", file_name="n.txt", content="v1", replace=True)
+
+    service.files.return_value.create.assert_called_once()
+    service.files.return_value.update.assert_not_called()
+
+
+def test_drive_mkdir_creates_folder_under_parent(monkeypatch):
+    service = MagicMock()
+    service.files.return_value.create.return_value.execute.return_value = {"id": "d1"}
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    assert gcs.drive_mkdir(object(), "sub", "parent1") == {"id": "d1"}
+
+    kwargs = service.files.return_value.create.call_args.kwargs
+    assert kwargs["body"] == {
+        "name": "sub", "mimeType": "application/vnd.google-apps.folder", "parents": ["parent1"],
+    }
+    assert kwargs["supportsAllDrives"] is True
+
+
+def test_drive_share_public_true_adds_anyone_reader(monkeypatch):
+    service = MagicMock()
+    perms = service.permissions.return_value
+    perms.create.return_value.execute.return_value = {"id": "anyoneWithLink"}
+    service.files.return_value.get.return_value.execute.return_value = {
+        "id": "f1", "webViewLink": "https://example.com/v"
+    }
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    result = gcs.drive_share(object(), "f1", public=True)
+
+    kwargs = perms.create.call_args.kwargs
+    assert kwargs["fileId"] == "f1"
+    assert kwargs["body"] == {"type": "anyone", "role": "reader"}
+    assert kwargs["supportsAllDrives"] is True
+    assert result == {"id": "f1", "webViewLink": "https://example.com/v",
+                      "public": True, "permission_ids": ["anyoneWithLink"]}
+
+
+def test_drive_share_public_false_removes_only_anyone_permissions(monkeypatch):
+    service = MagicMock()
+    perms = service.permissions.return_value
+    perms.list.return_value.execute.return_value = {"permissions": [
+        {"id": "p_user", "type": "user"},
+        {"id": "anyoneWithLink", "type": "anyone"},
+    ]}
+    service.files.return_value.get.return_value.execute.return_value = {"id": "f1", "webViewLink": None}
+    monkeypatch.setattr(gcs, "build", fake_build({"drive": service}))
+
+    result = gcs.drive_share(object(), "f1", public=False)
+
+    perms.delete.assert_called_once_with(
+        fileId="f1", permissionId="anyoneWithLink", supportsAllDrives=True
+    )
+    assert result["permission_ids"] == ["anyoneWithLink"] and result["public"] is False
+    perms.create.assert_not_called()
