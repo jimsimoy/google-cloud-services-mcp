@@ -304,7 +304,7 @@ def test_sheet_read_returns_values_or_empty_list(monkeypatch):
     result = gcs.sheet_read(object(), "sheet1", "A1:B2")
     assert result == [["a", "b"], ["1", "2"]]
     service.spreadsheets.return_value.values.return_value.get.assert_called_once_with(
-        spreadsheetId="sheet1", range="A1:B2"
+        spreadsheetId="sheet1", range="A1:B2", valueRenderOption="FORMATTED_VALUE"
     )
 
 
